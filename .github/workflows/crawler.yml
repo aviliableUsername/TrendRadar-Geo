@@ -1,5 +1,6 @@
 name: Get Hot News
 
+# Weekly geography report automation.
 on:
   schedule:
     # 每周三北京时间 08:00 运行。GitHub Actions 使用 UTC，因此这里是周三 00:00 UTC。
