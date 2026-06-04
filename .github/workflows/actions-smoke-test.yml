@@ -1,5 +1,6 @@
 name: Actions Smoke Test
 
+# Minimal workflow used to verify GitHub-hosted runner allocation.
 on:
   workflow_dispatch:
 
