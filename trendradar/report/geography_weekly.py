@@ -616,16 +616,23 @@ def select_candidates(candidates: list[TopicCandidate], limit: int) -> list[Topi
     return selected
 
 
-def make_teaching_note(candidate: TopicCandidate, has_authority_refs: bool) -> str:
-    terms = "、".join(candidate.matched_terms[:4])
+def make_entry_angle(candidate: TopicCandidate, has_authority_refs: bool) -> str:
+    terms = "、".join(candidate.matched_terms[:4]) or "区域背景、人地关系"
     if candidate.category.priority == "P1":
-        lead = "适合作为课堂导入"
+        classroom = f"可作为课堂导入或基础概念案例，从{terms}切入，连接{candidate.category.module}。"
+        creation = "适合写成公众号/知乎科普短文，突出热点背后的地理概念、空间差异或人地关系。"
     elif candidate.category.priority == "P2":
-        lead = "适合作为区域或过程分析案例"
+        classroom = f"可作为区域比较、过程分析或综合题素材，从{terms}切入，连接{candidate.category.module}。"
+        creation = "适合写成公众号/知乎深度分析，解释成因、过程、影响和区域差异。"
     else:
-        lead = "适合作为拓展阅读"
-    suffix = "已给出权威核验入口，成稿前需核对具体事件页面。" if has_authority_refs else "需补充权威信源后再写成完整说明。"
-    return f"{lead}，可从{terms}切入，连接{candidate.category.module}。{suffix}"
+        classroom = f"可作为拓展阅读或课后探究素材，从{terms}切入，连接{candidate.category.module}。"
+        creation = "适合写成地理科普补充或选题线索，不宜直接作为主线论证。"
+    boundary = (
+        "已给出权威核验入口，成稿前需核对具体事件页面、数据口径和发布时间。"
+        if has_authority_refs
+        else "需补充政府部门、正规媒体、学术期刊或国际组织等权威信源后再写成完整说明。"
+    )
+    return f"课堂/备课：{classroom}\n内容创作：{creation}\n核验边界：{boundary}"
 
 
 def make_evidence(candidate: TopicCandidate) -> str:
@@ -638,6 +645,7 @@ def make_evidence(candidate: TopicCandidate) -> str:
 
 def to_report_dict(candidate: TopicCandidate, curriculum_ref: CurriculumReference) -> dict:
     authority_refs = get_authority_references(candidate)
+    entry_angle = make_entry_angle(candidate, bool(authority_refs))
     return {
         "topic": candidate.title,
         "platforms": candidate.platform_names,
@@ -645,7 +653,8 @@ def to_report_dict(candidate: TopicCandidate, curriculum_ref: CurriculumReferenc
         "curriculum_module": candidate.category.module,
         "priority": candidate.category.priority,
         "matched_terms": candidate.matched_terms,
-        "teaching_note": make_teaching_note(candidate, bool(authority_refs)),
+        "entry_angle": entry_angle,
+        "teaching_note": entry_angle,
         "original_urls": candidate.urls,
         "authority_reference_status": "已提供权威核验入口，需复核具体事件页面",
         "authority_references": [serialize_reference(ref) for ref in authority_refs],
@@ -699,9 +708,9 @@ def render_markdown(
         f"- 候选池：{total_candidates} 条",
         f"- 入选：{len(rows)} 条",
         f"- 课标依据：{curriculum_status}",
-        "- 说明：本报告用于热点初筛；科学解释和课堂成稿前必须打开权威链接核对具体事件页面，不使用百度百科、百家号作为依据。",
+        "- 说明：本报告用于地理热点初筛，可服务于高中地理备课、课堂案例设计、地理科普写作、公众号或知乎选题参考；正式使用前必须打开权威链接核对具体事件页面，不使用百度百科、百家号作为依据。",
         "",
-        "| # | 原始话题 | 来源平台 | 热度证据 | 课标模块 | 优先级 | 教学切入 | 原始链接 | 权威引用 | 核验状态 |",
+        "| # | 原始话题 | 来源平台 | 热度证据 | 课标模块 | 优先级 | 切入角度 | 原始链接 | 权威引用 | 核验状态 |",
         "|---|---|---|---|---|---|---|---|---|---|",
     ]
 
@@ -716,7 +725,7 @@ def render_markdown(
                     escape_table(row["evidence"]),
                     escape_table(row["curriculum_module"]),
                     escape_table(row["priority"]),
-                    escape_table(row["teaching_note"]),
+                    escape_table(row["entry_angle"]),
                     markdown_link_list(row["original_urls"]),
                     markdown_reference_list(row.get("authority_references", [])),
                     escape_table(row["authority_reference_status"]),

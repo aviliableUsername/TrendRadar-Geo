@@ -12,6 +12,7 @@
 - 课标依据：默认读取 `D:\BaiduNetdiskDownload\普通高中地理课程标准（2017年版2020年修订).pdf`
 - 周报候选输出：`output/geography/YYYY-MM-DD-weekly-geography.md`
 - 结构化输出：`output/geography/YYYY-MM-DD-weekly-geography.json`
+- “切入角度”输出：每条热点区分 `课堂/备课`、`内容创作`、`核验边界`，可同时服务课堂案例设计、公众号/知乎选题参考和正式成稿前的事实核查
 - 文件投递：GitHub Actions 会上传 `geography-weekly-report` artifact；如配置邮箱 Secrets，会同时发送 Markdown 和 JSON 附件
 
 GitHub Actions 中的 `Get Hot News` 会在每周三北京时间 08:00 抓取热榜并生成地理周报候选；手动运行 workflow 时会直接生成，方便测试。
@@ -63,4 +64,4 @@ python -m trendradar.report.email_geography_weekly --report-dir output/geography
 
 ## 注意事项
 
-生成脚本负责“热点与课标匹配”和“权威核验入口匹配”。热榜链接只能证明话题热度，不能证明科学解释正确。正式周报仍需打开对应官网或正规媒体页面，核对具体事件事实、数据口径和发布时间；缺少具体权威页面时，不应生成确定性的科学说明。
+生成脚本负责“热点与课标匹配”“切入角度区分”和“权威核验入口匹配”。热榜链接只能证明话题热度，不能证明科学解释正确。正式用于课堂、公众号、知乎或其他内容成稿前，仍需打开对应官网或正规媒体页面，核对具体事件事实、数据口径和发布时间；缺少具体权威页面时，不应生成确定性的科学说明。
