@@ -15,7 +15,7 @@
 - “切入角度”输出：每条热点区分 `课堂/备课`、`内容创作`、`核验边界`，可同时服务课堂案例设计、公众号/知乎选题参考和正式成稿前的事实核查
 - 文件投递：GitHub Actions 会上传 `geography-weekly-report` artifact；如配置邮箱 Secrets，会同时发送 Markdown 和 JSON 附件
 
-GitHub Actions 中的 `Get Hot News` 会在每周三北京时间 08:00 抓取热榜并生成地理周报候选；手动运行 workflow 时会直接生成，方便测试。
+GitHub Actions 中的 `Get Hot News` 会在每天北京时间 08:00 抓取热榜，并把 `output/news/*.db` 与 `output/rss/*.db` 提交回仓库，用于积累滚动数据；每周三北京时间 08:00 会在抓取后额外生成地理周报候选并发送邮件。手动运行 workflow 时会直接生成周报，方便测试。
 
 ## 手动生成
 

@@ -1,15 +1,16 @@
 name: Get Hot News
 
-# Weekly geography report automation.
+# Daily crawl with weekly geography report automation.
 on:
   schedule:
-    # 每周三北京时间 08:00 运行。GitHub Actions 使用 UTC，因此这里是周三 00:00 UTC。
-    - cron: "0 0 * * 3"
+    # 每天北京时间 08:00 运行。GitHub Actions 使用 UTC，因此这里是 00:00 UTC。
+    # 周三运行时会额外生成并发送地理周报；其他日期只积累热榜数据。
+    - cron: "0 0 * * *"
 
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   crawl:
@@ -100,19 +101,63 @@ jobs:
           GITHUB_ACTIONS: true
         run: uv run python -m trendradar
 
-      - name: Generate geography weekly report
+      - name: Persist crawl databases
         if: success()
+        run: |
+          python - <<'PY'
+          from datetime import date, timedelta
+          from pathlib import Path
+
+          cutoff = date.today() - timedelta(days=14)
+          for directory in (Path("output/news"), Path("output/rss")):
+              directory.mkdir(parents=True, exist_ok=True)
+              for db_path in directory.glob("*.db"):
+                  try:
+                      db_date = date.fromisoformat(db_path.stem)
+                  except ValueError:
+                      continue
+                  if db_date < cutoff:
+                      db_path.unlink()
+          PY
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A output/news output/rss
+          if git diff --cached --quiet; then
+            echo "No crawl database changes to persist."
+          else
+            git commit -m "Update crawl data $(date -u +%F)"
+            git push
+          fi
+
+      - name: Decide weekly report delivery
+        if: success()
+        id: report_gate
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "run_report=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "$(date -u +%u)" = "3" ]; then
+            echo "run_report=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run_report=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Generate geography weekly report
+        if: success() && steps.report_gate.outputs.run_report == 'true'
         run: uv run python -m trendradar.report.geography_weekly --days 7 --limit 15 --format both
 
       - name: Upload geography report artifact
-        if: success() && hashFiles('output/geography/*') != ''
+        if: success() && steps.report_gate.outputs.run_report == 'true' && hashFiles('output/geography/*') != ''
         uses: actions/upload-artifact@v4
         with:
           name: geography-weekly-report
           path: output/geography/*
 
       - name: Email geography weekly report
-        if: success() && hashFiles('output/geography/*') != ''
+        if: success() && steps.report_gate.outputs.run_report == 'true' && hashFiles('output/geography/*') != ''
         env:
           EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
