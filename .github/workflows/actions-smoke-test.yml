@@ -1,0 +1,21 @@
+name: Actions Smoke Test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+
+    steps:
+      - name: Print runner context
+        run: |
+          echo "repository=${GITHUB_REPOSITORY}"
+          echo "workflow=${GITHUB_WORKFLOW}"
+          echo "run_id=${GITHUB_RUN_ID}"
+          echo "runner=${RUNNER_NAME}"
+          date -u
