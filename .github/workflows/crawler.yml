@@ -3,9 +3,9 @@ name: Get Hot News
 # Daily crawl with weekly geography report automation.
 on:
   schedule:
-    # 每天北京时间 08:00 运行。GitHub Actions 使用 UTC，因此这里是 00:00 UTC。
+    # 每天北京时间 24:00 运行（次日 00:00）。GitHub Actions 使用 UTC，因此这里是 16:00 UTC。
     # 周三运行时会额外生成并发送地理周报；其他日期只积累热榜数据。
-    - cron: "0 0 * * *"
+    - cron: "0 16 * * *"
 
   workflow_dispatch:
 
