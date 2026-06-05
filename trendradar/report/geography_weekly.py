@@ -118,7 +118,10 @@ CURRICULUM_RULES: tuple[CurriculumRule, ...] = (
             "人口", "出生率", "老龄化", "迁徙", "流动人口", "春运", "返乡", "城镇化",
             "城市更新", "新区", "都市圈", "城市群", "地铁", "高铁", "机场", "港口",
             "航运", "物流", "农业", "粮食", "耕地", "种植", "养殖", "乡村振兴",
-            "产业转移", "产业带", "制造业", "服务业", "文旅", "旅游", "景区",
+            "产业转移", "产业带", "产业链", "产业集群", "新兴产业", "AI产业",
+            "人工智能产业", "算力中心", "数据中心", "半导体产业", "集成电路产业",
+            "芯片产业", "机器人产业", "低空经济", "智能制造", "新能源汽车",
+            "制造业", "服务业", "文旅", "旅游", "景区",
         ),
     ),
     CurriculumRule(
@@ -181,6 +184,20 @@ DISQUALIFY_HINTS = (
     "地图上线", "皮肤", "角色", "抽卡", "直播间", "带货", "猪肉", "食道", "内脏",
     "好哭", "树洞", "心智", "生命的河流", "指示牌",
 )
+MARKET_ONLY_HINTS = (
+    "纳指", "道指", "标普", "美股", "港股", "a股", "股价", "股票", "财报", "大跌",
+    "跌超", "承压", "比特币", "加密货币", "金涨油跌", "交易降温", "交易升温",
+)
+INDUSTRY_GEOGRAPHY_HINTS = (
+    "产业", "产业链", "产业集群", "产业带", "产业园", "园区", "基地", "布局",
+    "新兴产业", "AI产业", "人工智能产业", "算力", "算力中心", "数据中心",
+    "半导体产业", "集成电路产业", "芯片产业", "机器人产业", "低空经济",
+    "智能制造", "新能源汽车", "制造业", "服务业", "区域", "城市",
+)
+WEAK_TERM_CONTEXTS = {
+    "升温": ("气温", "天气", "冷空气", "寒潮", "高温", "低温", "气象", "预警"),
+    "降温": ("气温", "天气", "冷空气", "寒潮", "高温", "低温", "气象", "预警"),
+}
 DEFAULT_CURRICULUM_PDF = r"D:\BaiduNetdiskDownload\普通高中地理课程标准（2017年版2020年修订).pdf"
 
 AUTHORITY_REFERENCE_RULES: tuple[tuple[tuple[str, ...], tuple[AuthorityReference, ...]], ...] = (
@@ -245,6 +262,13 @@ AUTHORITY_REFERENCE_RULES: tuple[tuple[tuple[str, ...], tuple[AuthorityReference
         ),
     ),
     (
+        ("新兴产业", "AI产业", "人工智能产业", "算力", "算力中心", "数据中心", "半导体产业", "集成电路产业", "芯片产业", "机器人产业", "低空经济", "智能制造", "新能源汽车"),
+        (
+            AuthorityReference("工业和信息化部", "https://www.miit.gov.cn/", "核验工业、信息化和新兴产业政策信息"),
+            AuthorityReference("国家发展改革委", "https://www.ndrc.gov.cn/", "核验产业布局、算力基础设施和区域发展政策"),
+        ),
+    ),
+    (
         ("生态", "湿地", "红树林", "生物多样性", "自然保护区", "国家公园", "污染治理", "空气质量", "水质", "土壤污染", "碳达峰", "碳中和", "双碳"),
         (
             AuthorityReference("生态环境部", "https://www.mee.gov.cn/", "核验生态环境质量、污染治理和双碳政策信息"),
@@ -271,6 +295,23 @@ def normalize_title(title: str) -> str:
     title = re.sub(r"\s+", "", title or "")
     title = re.sub(r"[#【】\[\]（）()]+", "", title)
     return title.lower()
+
+
+def has_any_hint(normalized_title: str, hints: tuple[str, ...]) -> bool:
+    return any(hint.lower() in normalized_title for hint in hints)
+
+
+def is_market_only_topic(normalized_title: str) -> bool:
+    return has_any_hint(normalized_title, MARKET_ONLY_HINTS) and not has_any_hint(
+        normalized_title, INDUSTRY_GEOGRAPHY_HINTS
+    )
+
+
+def term_allowed(term: str, normalized_title: str) -> bool:
+    contexts = WEAK_TERM_CONTEXTS.get(term)
+    if not contexts:
+        return True
+    return has_any_hint(normalized_title, contexts)
 
 
 def parse_db_date(path: Path) -> date | None:
@@ -326,12 +367,18 @@ def classify_title(title: str) -> tuple[CurriculumRule | None, list[str]]:
     normalized = normalize_title(title)
     if any(hint.lower() in normalized for hint in DISQUALIFY_HINTS):
         return None, []
+    if is_market_only_topic(normalized):
+        return None, []
 
     best_rule = None
     best_terms: list[str] = []
 
     for rule in CURRICULUM_RULES:
-        matched = [term for term in rule.terms if term.lower() in normalized]
+        matched = [
+            term
+            for term in rule.terms
+            if term.lower() in normalized and term_allowed(term, normalized)
+        ]
         if not matched:
             continue
         if best_rule is None:
