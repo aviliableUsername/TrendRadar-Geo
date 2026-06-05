@@ -15,7 +15,7 @@
 - “切入角度”输出：每条热点区分 `课堂/备课`、`内容创作`、`核验边界`，可同时服务课堂案例设计、公众号/知乎选题参考和正式成稿前的事实核查
 - 文件投递：GitHub Actions 会上传 `geography-weekly-report` artifact；如配置邮箱 Secrets，会同时发送 Markdown 和 JSON 附件
 
-GitHub Actions 中的 `Get Hot News` 会在每天北京时间 24:00（次日 00:00）抓取热榜，并把 `output/news/*.db` 与 `output/rss/*.db` 提交回仓库，用于积累滚动数据；每周三北京时间 24:00 会在抓取后额外生成地理周报候选并发送邮件。手动运行 workflow 时会直接生成周报，方便测试。
+GitHub Actions 中的 `Get Hot News` 会在每天北京时间 24:00（次日 00:00）抓取热榜，并把 `output/news/*.db` 与 `output/rss/*.db` 提交回仓库，用于积累滚动数据。每日抓取步骤会显式关闭普通热榜通知，不会发送普通热点邮件；每周三北京时间 24:00 会在抓取后额外生成地理周报候选并发送邮件。手动运行 workflow 时会直接生成周报，方便测试。
 
 ## 手动生成
 
@@ -43,7 +43,7 @@ GEOGRAPHY_CURRICULUM_PDF=/path/to/curriculum.pdf python -m trendradar.report.geo
 
 ## 邮件投递
 
-每周报告生成后，workflow 会自动尝试发送邮件附件。未配置邮箱时会跳过，不影响周报生成和 artifact 上传。
+每周报告生成后，workflow 会自动尝试发送邮件附件。邮箱 Secrets 只在周报邮件步骤中使用，不会注入每日抓取步骤；未配置邮箱时会跳过，不影响周报生成和 artifact 上传。
 
 在 GitHub 仓库中进入 `Settings` → `Secrets and variables` → `Actions` → `New repository secret`，添加：
 

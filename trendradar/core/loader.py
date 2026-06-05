@@ -99,9 +99,10 @@ def _load_notification_config(config_data: Dict) -> Dict:
     notification = config_data.get("notification", {})
     advanced = config_data.get("advanced", {})
     batch_size = advanced.get("batch_size", {})
+    enabled_env = _get_env_bool("ENABLE_NOTIFICATION")
 
     return {
-        "ENABLE_NOTIFICATION": notification.get("enabled", True),
+        "ENABLE_NOTIFICATION": enabled_env if enabled_env is not None else notification.get("enabled", True),
         "MESSAGE_BATCH_SIZE": batch_size.get("default", 4000),
         "DINGTALK_BATCH_SIZE": batch_size.get("dingtalk", 20000),
         "FEISHU_BATCH_SIZE": batch_size.get("feishu", 29000),
