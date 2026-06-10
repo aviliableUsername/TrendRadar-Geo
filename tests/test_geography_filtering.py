@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import sqlite3
+import tempfile
 import unittest
+from datetime import date
 from pathlib import Path
 
 from trendradar.core.frequency import load_frequency_words, matches_word_groups
-from trendradar.report.geography_weekly import classify_title
+from trendradar.report.geography_weekly import classify_title, collect_data_coverage
 
 
 KEYWORD_PATH = Path("config/custom/keyword/high_school_geography.txt")
@@ -55,6 +58,60 @@ class GeographyFilteringTest(unittest.TestCase):
         self.assertEqual("P1-必修地理2-人口城市产业", rule.name)
         self.assertIn("人工智能产业", terms)
         self.assertIn("数据中心", terms)
+
+    def test_stock_market_recap_with_industry_terms_is_excluded(self) -> None:
+        title = "【每日收评】创业板指涨近4%，科技股反弹，芯片产业链领涨"
+
+        rule, terms = classify_title(title)
+        self.assertIsNone(rule)
+        self.assertEqual([], terms)
+
+    def test_industry_project_with_market_context_is_retained(self) -> None:
+        title = "全球首个预制算力中心底座正式投用，产业布局加快"
+
+        rule, terms = classify_title(title)
+        self.assertIsNotNone(rule)
+        self.assertEqual("P1-必修地理2-人口城市产业", rule.name)
+        self.assertIn("算力中心", terms)
+
+    def test_data_coverage_reports_missing_dates(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            news_dir = Path(tmp) / "news"
+            news_dir.mkdir()
+            for day in ("2026-06-04", "2026-06-06"):
+                connection = sqlite3.connect(news_dir / f"{day}.db")
+                connection.executescript(
+                    """
+                    CREATE TABLE platforms (id TEXT PRIMARY KEY, name TEXT);
+                    CREATE TABLE news_items (
+                        id INTEGER PRIMARY KEY,
+                        title TEXT,
+                        platform_id TEXT
+                    );
+                    CREATE TABLE crawl_records (
+                        id INTEGER PRIMARY KEY,
+                        crawl_time TEXT,
+                        total_items INTEGER
+                    );
+                    INSERT INTO platforms VALUES ('weibo', '微博');
+                    INSERT INTO news_items VALUES (1, '测试热点', 'weibo');
+                    INSERT INTO crawl_records VALUES (1, '00-00', 1);
+                    """
+                )
+                connection.commit()
+                connection.close()
+
+            coverage = collect_data_coverage(
+                Path(tmp),
+                date.fromisoformat("2026-06-04"),
+                date.fromisoformat("2026-06-06"),
+            )
+
+        self.assertEqual("partial", coverage.status)
+        self.assertEqual(("2026-06-05",), coverage.missing_dates)
+        self.assertEqual(2, coverage.total_news_records)
+        self.assertEqual(("微博",), coverage.platform_names)
+        self.assertEqual(2, coverage.total_snapshots)
 
 
 if __name__ == "__main__":

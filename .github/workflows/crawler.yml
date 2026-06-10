@@ -16,6 +16,8 @@ jobs:
   crawl:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      TZ: Asia/Shanghai
 
     steps:
       - name: Checkout repository
@@ -108,7 +110,7 @@ jobs:
           if git diff --cached --quiet; then
             echo "No crawl database changes to persist."
           else
-            git commit -m "Update crawl data $(date -u +%F)"
+            git commit -m "Update crawl data $(date +%F)"
             git push
           fi
 
@@ -121,7 +123,7 @@ jobs:
             exit 0
           fi
 
-          if [ "$(date -u +%u)" = "3" ]; then
+          if [ "$(date +%u)" = "3" ]; then
             echo "run_report=true" >> "$GITHUB_OUTPUT"
           else
             echo "run_report=false" >> "$GITHUB_OUTPUT"
@@ -129,7 +131,7 @@ jobs:
 
       - name: Generate geography weekly report
         if: success() && steps.report_gate.outputs.run_report == 'true'
-        run: uv run python -m trendradar.report.geography_weekly --days 7 --limit 15 --format both
+        run: uv run python -m trendradar.report.geography_weekly --end-date latest --days 7 --limit 15 --format both
 
       - name: Upload geography report artifact
         if: success() && steps.report_gate.outputs.run_report == 'true' && hashFiles('output/geography/*') != ''

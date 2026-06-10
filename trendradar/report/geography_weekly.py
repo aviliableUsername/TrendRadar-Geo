@@ -96,6 +96,23 @@ class CurriculumReference:
     note: str = ""
 
 
+@dataclass(frozen=True)
+class DataCoverage:
+    expected_dates: tuple[str, ...]
+    database_dates: tuple[str, ...]
+    missing_dates: tuple[str, ...]
+    total_news_records: int
+    platform_names: tuple[str, ...]
+    total_snapshots: int
+    snapshot_counts: dict[str, int]
+
+    @property
+    def status(self) -> str:
+        if not self.database_dates or self.total_news_records == 0:
+            return "blocked"
+        return "complete" if not self.missing_dates else "partial"
+
+
 CURRICULUM_RULES: tuple[CurriculumRule, ...] = (
     CurriculumRule(
         name="P1-必修地理1-自然环境与实践",
@@ -187,12 +204,18 @@ DISQUALIFY_HINTS = (
 MARKET_ONLY_HINTS = (
     "纳指", "道指", "标普", "美股", "港股", "a股", "股价", "股票", "财报", "大跌",
     "跌超", "承压", "比特币", "加密货币", "金涨油跌", "交易降温", "交易升温",
+    "收评", "盘中", "涨停", "跌停", "领涨", "领跌", "回调", "指数", "个股", "市值",
 )
 INDUSTRY_GEOGRAPHY_HINTS = (
     "产业", "产业链", "产业集群", "产业带", "产业园", "园区", "基地", "布局",
     "新兴产业", "AI产业", "人工智能产业", "算力", "算力中心", "数据中心",
     "半导体产业", "集成电路产业", "芯片产业", "机器人产业", "低空经济",
     "智能制造", "新能源汽车", "制造业", "服务业", "区域", "城市",
+)
+INDUSTRY_DEVELOPMENT_HINTS = (
+    "建设", "建成", "投用", "投产", "落地", "布局", "规划", "发展", "升级",
+    "突破", "研发", "应用", "扩产", "产能", "基地", "园区", "集群", "政策",
+    "产业转移", "区域协同", "区域协调",
 )
 WEAK_TERM_CONTEXTS = {
     "升温": ("气温", "天气", "冷空气", "寒潮", "高温", "低温", "气象", "预警"),
@@ -302,8 +325,11 @@ def has_any_hint(normalized_title: str, hints: tuple[str, ...]) -> bool:
 
 
 def is_market_only_topic(normalized_title: str) -> bool:
-    return has_any_hint(normalized_title, MARKET_ONLY_HINTS) and not has_any_hint(
-        normalized_title, INDUSTRY_GEOGRAPHY_HINTS
+    if not has_any_hint(normalized_title, MARKET_ONLY_HINTS):
+        return False
+    return not (
+        has_any_hint(normalized_title, INDUSTRY_GEOGRAPHY_HINTS)
+        and has_any_hint(normalized_title, INDUSTRY_DEVELOPMENT_HINTS)
     )
 
 
@@ -361,6 +387,63 @@ def iter_rss_db_paths(output_dir: Path, start_date: date, end_date: date) -> Ite
         db_date = parse_db_date(db_path)
         if db_date and start_date <= db_date <= end_date:
             yield db_date, db_path
+
+
+def collect_data_coverage(output_dir: Path, start_date: date, end_date: date) -> DataCoverage:
+    expected_dates = tuple(
+        (start_date + timedelta(days=offset)).isoformat()
+        for offset in range((end_date - start_date).days + 1)
+    )
+    database_dates: list[str] = []
+    total_news_records = 0
+    platform_names: set[str] = set()
+    total_snapshots = 0
+    snapshot_counts: dict[str, int] = {}
+
+    for db_date, db_path in iter_db_paths(output_dir, start_date, end_date):
+        conn = None
+        try:
+            conn = sqlite3.connect(str(db_path))
+            news_record_count = int(conn.execute("SELECT COUNT(*) FROM news_items").fetchone()[0])
+            db_platform_names = {
+                str(row[0])
+                for row in conn.execute(
+                    """
+                    SELECT DISTINCT COALESCE(p.name, n.platform_id)
+                    FROM news_items n
+                    LEFT JOIN platforms p ON p.id = n.platform_id
+                    ORDER BY 1
+                    """
+                ).fetchall()
+                if row[0]
+            }
+            snapshot_count = int(conn.execute("SELECT COUNT(*) FROM crawl_records").fetchone()[0])
+
+            database_dates.append(db_date.isoformat())
+            total_news_records += news_record_count
+            platform_names.update(db_platform_names)
+            snapshot_counts[db_date.isoformat()] = snapshot_count
+            total_snapshots += snapshot_count
+        except sqlite3.Error as exc:
+            print(f"[geography-weekly] Skip coverage audit for {db_path}: {exc}")
+        finally:
+            try:
+                if conn is not None:
+                    conn.close()
+            except Exception:
+                pass
+
+    database_date_set = set(database_dates)
+    missing_dates = tuple(day for day in expected_dates if day not in database_date_set)
+    return DataCoverage(
+        expected_dates=expected_dates,
+        database_dates=tuple(database_dates),
+        missing_dates=missing_dates,
+        total_news_records=total_news_records,
+        platform_names=tuple(sorted(platform_names)),
+        total_snapshots=total_snapshots,
+        snapshot_counts=snapshot_counts,
+    )
 
 
 def classify_title(title: str) -> tuple[CurriculumRule | None, list[str]]:
@@ -501,6 +584,21 @@ def serialize_curriculum_reference(ref: CurriculumReference) -> dict:
         "available": ref.available,
         "sha256": ref.sha256,
         "note": ref.note,
+    }
+
+
+def serialize_data_coverage(coverage: DataCoverage) -> dict:
+    return {
+        "status": coverage.status,
+        "expected_dates": list(coverage.expected_dates),
+        "database_dates": list(coverage.database_dates),
+        "missing_dates": list(coverage.missing_dates),
+        "total_news_records": coverage.total_news_records,
+        "platform_count": len(coverage.platform_names),
+        "platform_names": list(coverage.platform_names),
+        "total_snapshots": coverage.total_snapshots,
+        "snapshot_counts": coverage.snapshot_counts,
+        "sampling_note": "当前为每日单次榜单快照，可用于跨日候选汇总，不构成日内连续热度曲线。",
     }
 
 
@@ -703,7 +801,7 @@ def to_report_dict(candidate: TopicCandidate, curriculum_ref: CurriculumReferenc
         "entry_angle": entry_angle,
         "teaching_note": entry_angle,
         "original_urls": candidate.urls,
-        "authority_reference_status": "已提供权威核验入口，需复核具体事件页面",
+        "authority_reference_status": "仅提供权威核验入口，尚未完成具体事件级核验",
         "authority_references": [serialize_reference(ref) for ref in authority_refs],
         "curriculum_reference": serialize_curriculum_reference(curriculum_ref),
         "is_international": candidate.is_international,
@@ -743,6 +841,7 @@ def render_markdown(
     end_date: date,
     total_candidates: int,
     curriculum_ref: CurriculumReference,
+    data_coverage: DataCoverage,
 ) -> str:
     curriculum_status = (
         f"已读取课标 PDF：{curriculum_ref.path}（SHA256: {curriculum_ref.sha256[:12]}...）"
@@ -754,10 +853,17 @@ def render_markdown(
         "",
         f"- 候选池：{total_candidates} 条",
         f"- 入选：{len(rows)} 条",
+        f"- 数据覆盖：{len(data_coverage.database_dates)}/{len(data_coverage.expected_dates)} 天；"
+        f"{data_coverage.total_news_records} 条热榜记录；{len(data_coverage.platform_names)} 个平台；"
+        f"{data_coverage.total_snapshots} 次榜单快照",
+        f"- 缺失日期：{'、'.join(data_coverage.missing_dates) if data_coverage.missing_dates else '无'}",
+        "- 热度证据说明：原始话题、来源平台、榜单排名、抓取日期和抓取次数来自仓库 SQLite 数据；"
+        "当前每日抓取一次，只支持跨日汇总，不提供日内连续热度曲线。",
         f"- 课标依据：{curriculum_status}",
-        "- 说明：本报告用于地理热点初筛，可服务于高中地理备课、课堂案例设计、地理科普写作、公众号或知乎选题参考；正式使用前必须打开权威链接核对具体事件页面，不使用百度百科、百家号作为依据。",
+        "- 核验说明：报告中的部门官网链接是核验入口，不代表具体事件已经得到权威文章验证；"
+        "本报告用于热点初筛，正式使用前必须核对具体事件页面，不使用百度百科、百家号作为依据。",
         "",
-        "| # | 原始话题 | 来源平台 | 热度证据 | 课标模块 | 优先级 | 切入角度 | 原始链接 | 权威引用 | 核验状态 |",
+        "| # | 原始话题 | 来源平台 | 热度证据 | 课标模块 | 优先级 | 切入角度 | 原始链接 | 权威核验入口 | 核验状态 |",
         "|---|---|---|---|---|---|---|---|---|---|",
     ]
 
@@ -787,7 +893,8 @@ def render_markdown(
                 "",
                 "## 核验提醒",
                 "",
-                "以下入选热点已给出权威核验入口；正式成稿前仍需打开对应官网或正规媒体页面，核对事件事实、数据口径和发布时间：",
+                "以下入选热点只有热榜证据和权威核验入口，尚未自动完成具体事件级权威验证；"
+                "正式成稿前仍需打开对应官网或正规媒体页面，核对事件事实、数据口径和发布时间：",
             ]
         )
         for row in rows:
@@ -812,6 +919,7 @@ def write_outputs(
     total_candidates: int,
     output_format: str,
     curriculum_ref: CurriculumReference,
+    data_coverage: DataCoverage,
 ) -> list[Path]:
     report_dir = output_dir / "geography"
     report_dir.mkdir(parents=True, exist_ok=True)
@@ -823,6 +931,7 @@ def write_outputs(
         "end_date": end_date.isoformat(),
         "total_candidates": total_candidates,
         "selected_count": len(rows),
+        "data_coverage": serialize_data_coverage(data_coverage),
         "curriculum_reference": serialize_curriculum_reference(curriculum_ref),
         "rss_references": rss_references,
         "items": rows,
@@ -836,7 +945,15 @@ def write_outputs(
     if output_format in {"markdown", "both"}:
         md_path = report_dir / f"{base_name}.md"
         md_path.write_text(
-            render_markdown(rows, rss_references, start_date, end_date, total_candidates, curriculum_ref),
+            render_markdown(
+                rows,
+                rss_references,
+                start_date,
+                end_date,
+                total_candidates,
+                curriculum_ref,
+                data_coverage,
+            ),
             encoding="utf-8",
         )
         written.append(md_path)
@@ -862,6 +979,11 @@ def main(argv: list[str] | None = None) -> int:
     end_date = resolve_end_date(args.end_date, output_dir)
     start_date = end_date - timedelta(days=max(1, args.days) - 1)
     curriculum_ref = resolve_curriculum_reference(args.curriculum_pdf)
+    data_coverage = collect_data_coverage(output_dir, start_date, end_date)
+    if data_coverage.status == "blocked":
+        raise SystemExit(
+            f"No usable news records found from {start_date.isoformat()} to {end_date.isoformat()}"
+        )
     candidates = load_candidates(output_dir, start_date, end_date)
     rss_references = load_rss_references(output_dir, start_date, end_date)
     selected = select_candidates(candidates, max(1, args.limit))
@@ -875,8 +997,16 @@ def main(argv: list[str] | None = None) -> int:
         len(candidates),
         args.format,
         curriculum_ref,
+        data_coverage,
     )
 
+    print(
+        "[geography-weekly] Data coverage: "
+        f"{len(data_coverage.database_dates)}/{len(data_coverage.expected_dates)} days, "
+        f"{data_coverage.total_news_records} records, "
+        f"{len(data_coverage.platform_names)} platforms, "
+        f"{data_coverage.total_snapshots} snapshots"
+    )
     for path in written:
         print(f"[geography-weekly] Wrote {path}")
 
