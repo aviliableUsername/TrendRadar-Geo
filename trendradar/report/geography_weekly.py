@@ -220,7 +220,14 @@ INDUSTRY_DEVELOPMENT_HINTS = (
 WEAK_TERM_CONTEXTS = {
     "升温": ("气温", "天气", "冷空气", "寒潮", "高温", "低温", "气象", "预警"),
     "降温": ("气温", "天气", "冷空气", "寒潮", "高温", "低温", "气象", "预警"),
+    "预警": ("气象", "天气", "暴雨", "洪水", "洪涝", "台风", "寒潮", "高温", "地震", "灾害"),
 }
+WEATHER_DISASTER_TERMS = (
+    "暴雨", "强降雨", "洪水", "洪涝", "内涝", "台风", "寒潮", "冷空气", "高温",
+    "热浪", "气温", "升温", "降温", "融化", "冰雪", "干旱", "沙尘", "沙尘暴",
+    "雷暴", "冰雹", "龙卷风", "山火", "森林火灾", "地震", "余震", "滑坡",
+    "泥石流", "崩塌", "海啸", "气象", "预警",
+)
 DEFAULT_CURRICULUM_PDF = r"D:\BaiduNetdiskDownload\普通高中地理课程标准（2017年版2020年修订).pdf"
 
 AUTHORITY_REFERENCE_RULES: tuple[tuple[tuple[str, ...], tuple[AuthorityReference, ...]], ...] = (
@@ -788,11 +795,32 @@ def make_evidence(candidate: TopicCandidate) -> str:
     )
 
 
+def make_topic_group(candidate: TopicCandidate) -> str:
+    priority = candidate.category.priority
+    module = candidate.category.module
+    matched_terms = set(candidate.matched_terms)
+    if priority == "P1" and "地理2" in module:
+        return "P1-人口城市产业"
+    if priority == "P1":
+        if matched_terms.intersection(WEATHER_DISASTER_TERMS):
+            return "P1-自然灾害与天气气候"
+        return "P1-地貌水文生态"
+    if priority == "P2" and "区域发展" in module:
+        return "P2-区域发展"
+    if priority == "P2" and "资源" in module:
+        return "P2-资源环境与国家安全"
+    if priority == "P2":
+        return "P2-自然地理基础"
+    return "P3-地理技术与选修"
+
+
 def to_report_dict(candidate: TopicCandidate, curriculum_ref: CurriculumReference) -> dict:
     authority_refs = get_authority_references(candidate)
     entry_angle = make_entry_angle(candidate, bool(authority_refs))
     return {
         "topic": candidate.title,
+        "topic_group": make_topic_group(candidate),
+        "category_name": candidate.category.name,
         "platforms": candidate.platform_names,
         "evidence": make_evidence(candidate),
         "curriculum_module": candidate.category.module,
@@ -1011,7 +1039,17 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[geography-weekly] Wrote {path}")
 
     if args.stdout:
-        print(render_markdown(rows, rss_references, start_date, end_date, len(candidates), curriculum_ref))
+        print(
+            render_markdown(
+                rows,
+                rss_references,
+                start_date,
+                end_date,
+                len(candidates),
+                curriculum_ref,
+                data_coverage,
+            )
+        )
 
     if not rows:
         print("[geography-weekly] No geography candidates found in the selected date range.")

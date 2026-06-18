@@ -66,6 +66,13 @@ class GeographyFilteringTest(unittest.TestCase):
         self.assertIsNone(rule)
         self.assertEqual([], terms)
 
+    def test_business_warning_is_not_weather_warning(self) -> None:
+        title = "知名车企预警：做好行业全年跌15%到20%的心理准备"
+
+        rule, terms = classify_title(title)
+        self.assertIsNone(rule)
+        self.assertEqual([], terms)
+
     def test_industry_project_with_market_context_is_retained(self) -> None:
         title = "全球首个预制算力中心底座正式投用，产业布局加快"
 
