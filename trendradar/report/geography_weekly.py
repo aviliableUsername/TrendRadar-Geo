@@ -186,15 +186,21 @@ CURRICULUM_RULES: tuple[CurriculumRule, ...] = (
 )
 
 PRIORITY_SCORE = {"P1": 3000, "P2": 2000, "P3": 1000}
-CHINA_HINTS = (
-    "中国", "我国", "国内", "北京", "上海", "天津", "重庆", "河北", "山西", "辽宁", "吉林",
-    "黑龙江", "江苏", "浙江", "安徽", "福建", "江西", "山东", "河南", "湖北", "湖南", "广东",
-    "海南", "四川", "贵州", "云南", "陕西", "甘肃", "青海", "台湾", "内蒙古", "广西", "西藏",
-    "宁夏", "新疆", "香港", "澳门", "长江", "黄河", "珠江",
-)
+MIN_INTERNATIONAL_TOPICS = 1
+MAX_INTERNATIONAL_TOPICS = 2
 INTERNATIONAL_HINTS = (
-    "美国", "日本", "韩国", "朝鲜", "俄罗斯", "印度", "英国", "法国", "德国", "欧洲", "非洲",
-    "南美", "北美", "东南亚", "澳大利亚", "加拿大", "巴西", "印尼", "越南", "泰国", "菲律宾",
+    "全球", "海外", "国外", "国际", "世界", "境外", "跨境", "外媒",
+    "美国", "日本", "韩国", "朝鲜", "俄罗斯", "印度", "英国", "法国", "德国", "意大利",
+    "西班牙", "葡萄牙", "荷兰", "瑞士", "瑞典", "挪威", "芬兰", "丹麦", "冰岛",
+    "欧洲", "欧盟", "非洲", "南美", "北美", "拉美", "中东", "东南亚", "南亚", "中亚",
+    "澳大利亚", "新西兰", "加拿大", "巴西", "阿根廷", "智利", "秘鲁", "墨西哥",
+    "印尼", "印度尼西亚", "越南", "泰国", "菲律宾", "马来西亚", "新加坡", "缅甸",
+    "老挝", "柬埔寨", "尼泊尔", "巴基斯坦", "孟加拉", "斯里兰卡",
+    "伊朗", "伊拉克", "以色列", "沙特", "阿联酋", "土耳其", "埃及", "南非", "肯尼亚",
+    "尼日利亚", "埃塞俄比亚", "乌克兰", "波兰", "希腊",
+    "纽约", "洛杉矶", "旧金山", "加州", "佛州", "得州", "夏威夷", "阿拉斯加",
+    "东京", "大阪", "首尔", "莫斯科", "伦敦", "巴黎", "柏林", "罗马", "悉尼", "墨尔本",
+    "北极", "南极", "北冰洋", "太平洋岛国",
 )
 DISQUALIFY_HINTS = (
     "票房", "口碑", "电影", "电视剧", "综艺", "演唱会", "端游", "手游", "游戏", "赛季",
@@ -487,8 +493,7 @@ def classify_title(title: str) -> tuple[CurriculumRule | None, list[str]]:
 def is_international_topic(title: str) -> bool:
     normalized = normalize_title(title)
     has_foreign_hint = any(hint.lower() in normalized for hint in INTERNATIONAL_HINTS)
-    has_china_hint = any(hint.lower() in normalized for hint in CHINA_HINTS)
-    return has_foreign_hint and not has_china_hint
+    return has_foreign_hint
 
 
 def calculate_score(candidate: TopicCandidate) -> float:
@@ -758,12 +763,30 @@ def select_candidates(candidates: list[TopicCandidate], limit: int) -> list[Topi
 
     for candidate in candidates:
         if candidate.is_international:
-            if international_count >= 2:
+            if international_count >= MAX_INTERNATIONAL_TOPICS:
                 continue
             international_count += 1
         selected.append(candidate)
         if len(selected) >= limit:
             break
+
+    if international_count < MIN_INTERNATIONAL_TOPICS:
+        replacement = next(
+            (
+                candidate
+                for candidate in candidates
+                if candidate.is_international and candidate not in selected
+            ),
+            None,
+        )
+        if replacement:
+            if len(selected) < limit:
+                selected.append(replacement)
+            else:
+                for index in range(len(selected) - 1, -1, -1):
+                    if not selected[index].is_international:
+                        selected[index] = replacement
+                        break
 
     return selected
 
@@ -994,7 +1017,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-dir", default="output", help="TrendRadar output directory.")
     parser.add_argument("--days", type=int, default=7, help="Number of days to include.")
     parser.add_argument("--end-date", default=None, help="End date YYYY-MM-DD, or 'latest'. Defaults to today.")
-    parser.add_argument("--limit", type=int, default=15, help="Maximum selected topics. International topics are capped at 2.")
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=15,
+        help="Maximum selected topics. Eligible international topics are kept at least 1 and capped at 2.",
+    )
     parser.add_argument("--format", choices=("markdown", "json", "both"), default="both", help="Output format.")
     parser.add_argument("--curriculum-pdf", default=None, help="Path to 普通高中地理课程标准 PDF.")
     parser.add_argument("--stdout", action="store_true", help="Also print Markdown report to stdout.")

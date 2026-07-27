@@ -9,7 +9,14 @@ from datetime import date
 from pathlib import Path
 
 from trendradar.core.frequency import load_frequency_words, matches_word_groups
-from trendradar.report.geography_weekly import classify_title, collect_data_coverage
+from trendradar.report.geography_weekly import (
+    CURRICULUM_RULES,
+    TopicCandidate,
+    classify_title,
+    collect_data_coverage,
+    is_international_topic,
+    select_candidates,
+)
 
 
 KEYWORD_PATH = Path("config/custom/keyword/high_school_geography.txt")
@@ -19,6 +26,15 @@ class GeographyFilteringTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.word_groups, cls.filter_words, cls.global_filters = load_frequency_words(str(KEYWORD_PATH))
+
+    def make_candidate(self, title: str, score: float, is_international: bool = False) -> TopicCandidate:
+        return TopicCandidate(
+            title=title,
+            category=CURRICULUM_RULES[0],
+            matched_terms=["气候"],
+            score=score,
+            is_international=is_international,
+        )
 
     def matches_keyword_profile(self, title: str) -> bool:
         return matches_word_groups(title, self.word_groups, self.filter_words, self.global_filters)
@@ -80,6 +96,27 @@ class GeographyFilteringTest(unittest.TestCase):
         self.assertIsNotNone(rule)
         self.assertEqual("P1-必修地理2-人口城市产业", rule.name)
         self.assertIn("算力中心", terms)
+
+    def test_international_topic_detection_accepts_overseas_places(self) -> None:
+        self.assertTrue(is_international_topic("中国企业在越南布局数据中心"))
+        self.assertTrue(is_international_topic("加州山火蔓延影响当地生态"))
+        self.assertFalse(is_international_topic("广东多地暴雨引发内涝"))
+
+    def test_select_candidates_keeps_one_international_when_available(self) -> None:
+        domestic_1 = self.make_candidate("国内热点1", 100)
+        domestic_2 = self.make_candidate("国内热点2", 90)
+        domestic_3 = self.make_candidate("国内热点3", 80)
+        international = self.make_candidate("加州山火蔓延影响当地生态", 30, True)
+
+        selected = select_candidates(
+            [domestic_1, domestic_2, domestic_3, international],
+            limit=3,
+        )
+
+        self.assertEqual(3, len(selected))
+        self.assertIn(international, selected)
+        self.assertNotIn(domestic_3, selected)
+        self.assertEqual(1, sum(1 for candidate in selected if candidate.is_international))
 
     def test_data_coverage_reports_missing_dates(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

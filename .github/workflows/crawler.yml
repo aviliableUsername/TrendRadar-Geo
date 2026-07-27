@@ -4,8 +4,10 @@ name: Get Hot News
 on:
   schedule:
     # 每天北京时间 24:00 运行（次日 00:00）。GitHub Actions 使用 UTC，因此这里是 16:00 UTC。
-    # 周三运行时会额外生成并发送地理周报；其他日期只积累热榜数据。
+    # 每日运行只积累热榜数据。
     - cron: "0 16 * * *"
+    # 每周日北京时间 12:00 额外生成并发送地理周报。GitHub Actions 使用 UTC，因此这里是周日 04:00 UTC。
+    - cron: "0 4 * * 0"
 
   workflow_dispatch:
 
@@ -123,7 +125,7 @@ jobs:
             exit 0
           fi
 
-          if [ "$(date +%u)" = "3" ]; then
+          if [ "${{ github.event.schedule }}" = "0 4 * * 0" ]; then
             echo "run_report=true" >> "$GITHUB_OUTPUT"
           else
             echo "run_report=false" >> "$GITHUB_OUTPUT"
